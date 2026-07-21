@@ -1,0 +1,13 @@
+[Unit]
+Description=UDP Custom by ePro Dev. Team
+
+[Service]
+User=root
+Type=simple
+ExecStart=/etc/udp-custom/udp-custom server --exclude 7300,7100,80,109,111,143,53,5300
+WorkingDirectory=/etc/udp-custom
+Restart=always
+RestartSec=2s
+
+[Install]
+WantedBy=default.target
