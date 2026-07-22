@@ -148,7 +148,17 @@ sysctl --system > /dev/null
 #  4. MARZBAN ENGINE + DOCKER
 # =============================================================================
 info "Menginstal Marzban Engine..."
-bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install
+# CATATAN: marzban.sh resmi mengakhiri install_command() dengan
+# follow_marzban_logs() -> "docker compose logs -f", yang blocking selamanya
+# dan membuat installer ini menggantung di sini. Unduh dulu, lumpuhkan
+# pemanggilan itu, baru jalankan.
+curl -sL -o /tmp/marzban.sh https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh \
+    || die "Gagal mengunduh marzban.sh"
+sed -i -E 's|^([[:space:]]*)follow_marzban_logs[[:space:]]*$|\1: # log-follow dinonaktifkan|' /tmp/marzban.sh
+grep -qE '^[[:space:]]*follow_marzban_logs[[:space:]]*$' /tmp/marzban.sh \
+    && warn "Masih ada pemanggilan follow_marzban_logs - installer bisa menggantung."
+bash /tmp/marzban.sh @ install
+rm -f /tmp/marzban.sh
 
 info "Setup Marzban Environment..."
 cat > /opt/marzban/.env <<EOF
