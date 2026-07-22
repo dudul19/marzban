@@ -106,7 +106,7 @@ Jika ada pertanyaan atau kendala, jangan ragu untuk mengajukan issue atau pull r
 2. **Jalankan script instalasi**
    > Pastikan Anda sudah login sebagai `root` sebelum menjalankan perintah berikut:
    ```sh
-   tmux new -s fn "wget https://raw.githubusercontent.com/risqinf/marzban/main/install.sh && chmod +x install.sh && ./install.sh"
+   tmux new -s fn "wget https://raw.githubusercontent.com/dudul19/marzban/main/install.sh && chmod +x install.sh && ./install.sh"
    ```
 3. **Akses panel Marzban**
    - Buka browser dan kunjungi: `https://domainmu/dashboard`
