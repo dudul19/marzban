@@ -1,70 +1,82 @@
 #!/bin/bash
-
 clear
+RED='\033[1;31m'
+GREEN='\033[1;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[1;36m'
+WHITE='\033[1;37m'
+NC='\033[0m' # No Color
+BOLD='\033[1m'
+BG_RED='\e[41;97;1m' # Red background, bright white bold text
+BG_GRE='\e[42;97;1m' # Green background, bright white bold text
+BLUE='\033[1;34m'
+MAGENTA='\033[1;35m'
 
-# Membaca domain lama
+liner() {
+    echo -e " ${YELLOW}──────────────────────────────────${NC}"
+}
+
+ban_menu() {
+    echo -e " ${YELLOW}──────────────────────────────────${NC}"
+    echo -e " ${BG_GRE}        🌸 CHANGE DOMAIN 🌸       ${NC}"
+    echo -e " ${YELLOW}──────────────────────────────────${NC}"
+}
+
 if [ ! -f "/etc/data/domain" ]; then
-  echo "File /etc/data/domain tidak ditemukan!"
+  echo -e " ${RED} File /etc/data/domain not found!${NC}"
   exit 1
 fi
+
 domain2=$(cat /etc/data/domain)
 
-echo -e "\nYour Current Domain: $domain2"
+clear
+ban_menu
+echo -e " ${WHITE} Your Current Domain: ${GREEN}$domain2${NC}"
+liner
+read -rp "  Enter New Domain: " domain
+read -rp "  Enter your email: " email
 
-# Meminta input domain baru
-read -rp "Enter New Domain: " domain
-# Meminta input email
-read -rp "Enter your email: " email
-
-# Pastikan domain dan email tidak kosong
 if [[ -z "$domain" || -z "$email" ]]; then
-  echo "Domain atau email tidak boleh kosong!"
-  exit 1
+  echo
+  echo -e " ${GREEN} The domain or email cannot be empty!${NC}"
+  sleep 2
+  change-domain
 fi
 
-# Menurunkan Marzban sebelum pembaruan
-echo "Stopping Marzban..."
+clear
+echo -e "${GREEN}Stopping Marzban...${NC}"
 marzban down > /dev/null 2>&1
 
-# Mengeluarkan sertifikat SSL baru
-echo "Requesting SSL certificate..."
+echo -e "${GREEN}Requesting SSL certificate...${NC}"
 /root/.acme.sh/acme.sh --server letsencrypt --register-account -m "$email" --issue -d "$domain" --standalone -k ec-256 --force --debug
 
-# Menginstal sertifikat SSL
-echo "Installing SSL certificate..."
+echo -e "${GREEN}Installing SSL certificate...${NC}"
 ~/.acme.sh/acme.sh --installcert -d "$domain" --fullchainpath /var/lib/marzban/xray.crt --keypath /var/lib/marzban/xray.key --ecc
-
-# Menampilkan sertifikat yang baru diinstal
 cat /var/lib/marzban/xray.crt
 cat /var/lib/marzban/xray.key
 
-# Backup domain lama dan mengganti dengan yang baru
-echo "Updating domain configuration..."
+echo -e "${GREEN}Updating domain configuration...${NC}"
 mv /etc/data/domain /etc/data/domain.old
 sudo rm -f /etc/data/domain
 echo "$domain" | sudo tee /etc/data/domain
 sudo rm -f /etc/xray/domain
 echo "$domain" | sudo tee /etc/xray/domain
 
-# Membaca domain lama dari backup
 old=$(cat /etc/data/domain.old)
 
-# Memastikan domain lama tidak kosong sebelum mengganti
 if [[ -z "$old" ]]; then
-  echo "Domain lama tidak ditemukan di /etc/data/domain.old!"
+  echo -e "${GREEN}The old domain was not found in /etc/data/domain.old!${NC}"
   exit 1
 fi
 
-# Mengganti domain lama dengan domain baru di nginx.conf
-echo "Updating Nginx configuration..."
+echo -e "${GREEN}Updating Nginx configuration...${NC}"
 sed -i "s|$old|$domain|g" "/opt/marzban/nginx.conf"
 sed -i "s|$old|$domain|g" "/etc/data/setup.log"
 
-# Memperbarui domain dalam database SQLite
 DB_PATH="/var/lib/marzban/db.sqlite3"
 
 if [ ! -f "$DB_PATH" ]; then
-  echo "Database $DB_PATH tidak ditemukan!"
+  echo -e "${GREEN}Database $DB_PATH not found!${NC}"  
   exit 1
 fi
 
@@ -72,21 +84,18 @@ SQL_QUERY="UPDATE hosts SET address = '$domain' WHERE address = '$old'; \
 UPDATE hosts SET host = '$domain' WHERE host = '$old'; \
 UPDATE hosts SET sni = '$domain' WHERE sni = '$old';"
 
-echo "Updating database..."
+echo -e "${GREEN}Updating database...${NC}" 
 sqlite3 "$DB_PATH" "$SQL_QUERY"
 
 if [ $? -eq 0 ]; then
-  echo "Database update successful."
+  echo -e "${GREEN}Database update successful.${NC}" 
 else
-  echo "Database update failed!"
+  echo -e "${GREEN}Database update failed!${NC}" 
   exit 1
 fi
 
-# Menghapus file domain lama yang sudah tidak digunakan
 rm -f /etc/data/domain.old
 
-# Menjalankan ulang Marzban
-echo "Restarting Marzban..."
-marzban restart > /dev/null 2>&1
-
-echo "Domain successfully updated to $domain!"
+echo -e "${GREEN}Restarting Marzban...${NC}" 
+marzban restart
+echo -e "${GREEN}Domain successfully updated to $domain!${NC}" 

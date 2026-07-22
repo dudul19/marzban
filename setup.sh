@@ -384,7 +384,7 @@ warn "Rclone terpasang tanpa konfigurasi. Jalankan 'rclone config' bila perlu."
 info "Setup CLI Menus..."
 cd /usr/local/sbin || exit
 BASE='https://raw.githubusercontent.com/dudul19/marzban/refs/heads/main'
-for m in backup bmenu cekservice change-domain crt restore menu; do
+for m in backup bmenu cekservice change-domain crt menu-bot welcome restore menu; do
     try wget -qO "$m" "${BASE}/system/menu/${m}.sh"
 done
 for m in addssh cek-ssh delete-ssh member-ssh renew-ssh xp-ssh menu-ssh; do
@@ -397,19 +397,17 @@ grep -q 'xp-ssh' /etc/crontab || echo '* * * * * root xp-ssh' >> /etc/crontab
 try systemctl restart cron
 
 cat > /usr/bin/sys_profile <<'EOF'
-#!/bin/bash
-clear
-echo "==============================================="
-echo " Selamat datang di Layanan AutoScript Marzban"
-echo " Ketik 'menu' untuk menampilkan daftar perintah"
-echo "==============================================="
+if [ "$BASH" ]; then
+    if [ -f ~/.bashrc ]; then
+        . ~/.bashrc
+    fi
+fi
+mesg n || true
+welcome
 EOF
 chmod +x /usr/bin/sys_profile
 grep -q 'sys_profile' /root/.profile || echo 'sys_profile' >> /root/.profile
 
-# =============================================================================
-#  11. FINALISASI
-# =============================================================================
 info "Finalisasi..."
 apt-get autoremove -y && apt-get clean
 
@@ -430,44 +428,10 @@ EOF
 echo "Instalasi selesai pada $(date '+%d %b %Y %H:%M:%S')" > /etc/data/setup.log
 
 read -rp "Sistem perlu di-reboot. Reboot sekarang? [y/n] (Default: y): " RB
+
 RB=${RB:-y}
 if [[ "$RB" =~ ^[Yy]$ ]]; then
     reboot
 else
     warn "Jangan lupa reboot VPS nanti."
 fi
-
-# =============================================================================
-#  CATATAN KEAMANAN - hal yang masih perlu kamu putuskan
-# =============================================================================
-#  1. KODE REMOTE BELUM DIAUDIT
-#     Script ini masih menarik banyak file dari github.com/dudul19/marzban
-#     (menu, ssh-ws, udp-custom, ohpserver, openvpn/install.sh, dropbear.sh).
-#     Karena installer-nya terbukti memuat backdoor, file-file itu sebaiknya
-#     diperiksa dulu sebelum dipakai - salah satunya bisa memasang ulang
-#     akun tersembunyi. ohpserver & udp-custom adalah binary tanpa checksum.
-#
-#  2. db.sqlite3 SIAP PAKAI
-#     Database Marzban diunduh jadi dari repo yang sama, bukan dibuat baru.
-#     Bisa saja sudah berisi user/host bawaan. Periksa dengan:
-#         sqlite3 /var/lib/marzban/db.sqlite3 "SELECT * FROM admins;"
-#         sqlite3 /var/lib/marzban/db.sqlite3 "SELECT * FROM hosts;"
-#
-#  3. XRAY CORE
-#     Versi asli memakai core dari repo pribadi (Xray-core-mod). Di sini
-#     diganti release resmi XTLS. Kalau kamu memang butuh core termodifikasi,
-#     ganti kembali - tapi sadari itu binary yang tidak bisa diverifikasi.
-#
-#  4. SQUID
-#     Baris yang mengubah squid jadi open proxy sudah dihapus. Open proxy
-#     akan disalahgunakan orang lain dan bisa membuat VPS-mu di-suspend.
-#
-#  5. SSH PASSWORD AUTH
-#     Script ini mengaktifkan login SSH via password (dibutuhkan akun SSH
-#     tunneling). Pastikan password root kuat, atau batasi root ke key-only.
-#
-#  6. SETELAH INSTALASI - verifikasi tidak ada akun tak dikenal:
-#         awk -F: '$3>=1000 || $3==0 {print $1, $3, $7}' /etc/passwd
-#         getent group sudo
-#         grep -rn "" /etc/crontab /etc/cron.d/ 2>/dev/null
-# =============================================================================

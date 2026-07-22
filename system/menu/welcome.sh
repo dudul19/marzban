@@ -96,31 +96,22 @@ function menu_banner() {
     echo -e " ${WHITE} Region      : ${CITY}${NC}"
     echo -e " ${WHITE} Latency     : ${ping} ms${NC}"
     echo -e " ${YELLOW}──────────────────────────────────────────────────${NC}"
-    echo -e " ${WHITE} Developer   : t.me/dudulrealnofek${NC}"
-    echo -e " ${WHITE} Group       : t.me/tfnuclear${NC}"
+    echo -e " ${WHITE} SSH         : SSH Service is $status_ssh"
+    echo -e " ${WHITE} UDP Custom  : UDP Custom Service is $status_udp"
+    echo -e " ${WHITE} OpenVPN     : OpenVPN Service is $status_ovpn"
+    echo -e " ${WHITE} SSH WS      : SSH Websocket Service is $status_ws"
+    echo -e " ${WHITE} Dropbear    : Dropbear Service is $status_dropbear"
+    echo -e " ${WHITE} Cron        : Cron Service is $status_cron"
+    echo -e " ${WHITE} Vnstat      : Vnstat Service is $status_vnstat"
+    echo -e " ${WHITE} Marzban     : Marzban Core Service is $status_marzban"
+    echo -e " ${WHITE} Nginx       : Nginx Service is $status_nginx"
     echo -e " ${YELLOW}──────────────────────────────────────────────────${NC}"
-    echo -e " ${GREEN} 1.${NC}  ${WHITE}SSH OVPN Menu${NC}     ${GREEN}6.${NC}  ${WHITE}Telegram Bot${NC}"
-    echo -e " ${GREEN} 2.${NC}  ${WHITE}Marzban Menu${NC}      ${GREEN}7.${NC}  ${WHITE}Warp Menu${NC}"
-    echo -e " ${GREEN} 3.${NC}  ${WHITE}Change Domain${NC}     ${GREEN}8.${NC}  ${WHITE}Service Menu${NC}"
-    echo -e " ${GREEN} 4.${NC}  ${WHITE}Backup Menu${NC}       ${GREEN}9.${NC}  ${WHITE}Renew Cert${NC}"
-    echo -e " ${GREEN} 5.${NC}  ${WHITE}Check Service${NC}     ${RED}x.${NC}  ${WHITE}Exit${NC}"
+    echo -e " ${WHITE} Today       :${NC} ${GREEN}${bwhari}${NC}"
+    echo -e " ${WHITE} Yesterday   :${NC} ${GREEN}${bwkmrn}${NC}"
+    echo -e " ${WHITE} This Month  :${NC} ${GREEN}${bwbln}${NC}"
     echo -e " ${YELLOW}──────────────────────────────────────────────────${NC}"
-    echo -e " ${BG_GRE}           Thanks For Using Our Service           ${NC}"
-    echo -e " ${YELLOW}──────────────────────────────────────────────────${NC}"       
+    echo -e " ${BG_GRE}           Type [ menu ] to access panel          ${NC}"
+    echo -e " ${YELLOW}──────────────────────────────────────────────────${NC}"        
     echo
-    read -p " Choose an Options [1-9 or x] : " opt
-    case $opt in
-    1) clear ; menu-ssh ;;
-    2) clear ; marzban ;;
-    3) clear ; change-domain ;;
-    4) clear ; bmenu ;;
-    5) clear ; cekservice ;;
-    6) clear ; menu-bot ;;
-    7) clear ; warp ;;
-    8) clear ; fn-sc1 ;;
-    9) clear ; crt ;;
-    x) exit ;;
-    *) echo ; echo -e "${RED} You pressed it wrong!${NC}" ; sleep 1 ; menu ;;
-    esac
 }
 menu_banner

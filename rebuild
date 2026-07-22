@@ -1,0 +1,86 @@
+#!/bin/bash
+clear
+function osx_ubuntu() {
+  echo "┌─ ❖ Rebuild Ubuntu VPS ─────────────┐"
+  echo "│"
+  echo "│ 1.  Ubuntu 20.04"
+  echo "│ 2.  Ubuntu 22.04"
+  echo "│ 3.  Ubuntu 24.04"
+  echo "│ 4.  Ubuntu 24.10"
+  echo "│ x.  Exit"
+  echo "└────────────────────────────────────┘"
+  echo 
+  read -p "Enter your option [1-4 or x] : " opt
+  echo -e ""
+case $opt in
+1) clear ; ub20.04 ;;
+2) clear ; ub22.04 ;;
+3) clear ; ub24.04 ;;
+4) clear ; ub24.10 ;;
+x) clear ; m-rebuild ;;
+*) echo "You pressed it wrong!" ; sleep 1 ; m-rebuild ;;
+esac
+}
+
+
+function ub20.04() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Ubuntu 20.04 && reboot
+}
+
+function ub22.04() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Ubuntu 22.04 && reboot
+}
+
+function ub24.04() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Ubuntu 24.04 && reboot
+}
+
+function ub24.10() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Ubuntu 24.10 && reboot
+}
+
+function osx_debian() {
+  echo "┌─ ❖ Rebuild Debian VPS ─────────────┐"
+  echo "│"
+  echo "│ 1.  Debian 10"
+  echo "│ 2.  Debian 11"
+  echo "│ 3.  Debian 12"
+  echo "│ x.  Exit"
+  echo "└────────────────────────────────────┘"
+  echo
+  read -p "Enter your option [1-3 or x] : " opt
+  echo -e ""
+case $opt in
+1) clear ; deb10 ;;
+2) clear ; deb11 ;;
+3) clear ; deb12 ;;
+x) clear ; m-rebuild ;;
+*) echo "You pressed it wrong!" ; sleep 1 ; m-rebuild ;;
+esac
+}
+
+function deb10() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Debian 10 && reboot
+}
+function deb11() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Debian 11 && reboot
+}
+
+function deb12() {
+  curl -O https://raw.githubusercontent.com/bin456789/reinstall/main/reinstall.sh && bash reinstall.sh Debian 12 && reboot
+}
+
+echo "┌─ ❖ Rebuild VPS Menu ───────────────┐"
+echo "│"
+echo "│ 1.  Rebuild VPS Debian"
+echo "│ 2.  Rebuild VPS Ubuntu"
+echo "│ x.  Exit"
+echo "└────────────────────────────────────┘"
+echo
+read -p "Enter your option [1-2 or x] : " Opt
+case $Opt in
+1) clear ; osx_debian ;;
+2) clear ; osx_ubuntu ;;
+x) clear ; m-setting ;;
+*) echo "You pressed it wrong!" ; sleep 1 ; m-rebuild ;;
+esac

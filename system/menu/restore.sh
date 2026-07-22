@@ -2,7 +2,6 @@
 
 clear
 
-# Direktori kerja
 backup_dir="/root"
 backup_file=$(ls $backup_dir/*.zip 2>/dev/null | head -n 1)
 
