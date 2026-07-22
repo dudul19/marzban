@@ -12,6 +12,8 @@
 #    - stunnel (SSH over TLS) di port 445 -> dropbear 109
 #    - typo 'chmod +x /etc/udp-custo m/udp-custom' diperbaiki
 #
+#  Tahap SSL dibiarkan PERSIS seperti versi asli (tidak diubah).
+#
 #  CATATAN port 445: ini port SMB yang SERING diblokir ISP/cloud. Kalau
 #  klien tidak bisa connect ke 445, kemungkinan besar diblokir di jaringan
 #  mereka, bukan salah server. Ganti angka STUNNEL_PORT di bawah bila perlu.
@@ -208,25 +210,15 @@ wget -q -N -P /var/lib/marzban/templates/subscription/ \
 #  5. SERTIFIKAT SSL (Let's Encrypt via acme.sh)
 # =============================================================================
 info "Generating SSL Certificate (Let's Encrypt)..."
-# Pastikan port 80 bebas untuk acme --standalone.
-try systemctl stop apache2
-try bash -c "cd /opt/marzban && docker compose down"
-sleep 1
-
 curl -s https://get.acme.sh | sh -s > /dev/null 2>&1
 /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt > /dev/null 2>&1
 /root/.acme.sh/acme.sh --register-account -m "$EMAIL" > /dev/null 2>&1
-if ! /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --force; then
-    die "Penerbitan sertifikat gagal. Cek DNS ($DOMAIN -> $IP_VPS) dan port 80 di firewall provider."
-fi
-/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" --ecc \
+/root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --force > /dev/null 2>&1
+/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
     --fullchain-file /var/lib/marzban/xray.crt \
-    --key-file       /var/lib/marzban/xray.key \
-    --reloadcmd 'chmod 644 /var/lib/marzban/xray.crt; chmod 600 /var/lib/marzban/xray.key; systemctl restart stunnel4 2>/dev/null; cd /opt/marzban && docker compose restart'
-[[ -s /var/lib/marzban/xray.crt && -s /var/lib/marzban/xray.key ]] \
-    || die "xray.crt / xray.key tidak terbentuk. Berhenti sebelum layanan crash."
-chmod 644 /var/lib/marzban/xray.crt
-chmod 600 /var/lib/marzban/xray.key
+    --key-file      /var/lib/marzban/xray.key > /dev/null 2>&1
+chmod 755 /var/lib/marzban/xray.crt
+chmod 600 /var/lib/marzban/xray.key   # private key jangan world-readable
 
 info "Mengupdate Database Marzban..."
 sqlite3 /var/lib/marzban/db.sqlite3 "
