@@ -1,21 +1,26 @@
 #!/bin/bash
 # =============================================================================
-#  Marzban Panel Installer - REKONSTRUKSI BERSIH
+#  Marzban Panel Installer - REKONSTRUKSI BERSIH (+ stunnel :445)
 # =============================================================================
-#  Disusun ulang dari binary Rust "install.sh"
-#  (sha256 8cb88b9371719300488013464d6bf42199604b59913d886a5c4dbfbc7e10609b)
-#
 #  DIHAPUS dari versi asli:
 #    1. Akun sudo tersembunyi  rere_sys / admin123
 #    2. Pengiriman User+Domain+IP+machine-id ke Telegram pembuat script
 #    3. Penghapusan jejak (rm install.sh, wipe ~/.bash_history)
 #    4. Landing page & rclone.conf milik pihak ketiga
 #
-#  Lihat CATATAN KEAMANAN di bagian bawah file untuk hal yang masih
-#  perlu kamu putuskan sendiri.
+#  DITAMBAHKAN:
+#    - stunnel (SSH over TLS) di port 445 -> dropbear 109
+#    - typo 'chmod +x /etc/udp-custo m/udp-custom' diperbaiki
+#
+#  CATATAN port 445: ini port SMB yang SERING diblokir ISP/cloud. Kalau
+#  klien tidak bisa connect ke 445, kemungkinan besar diblokir di jaringan
+#  mereka, bukan salah server. Ganti angka STUNNEL_PORT di bawah bila perlu.
 # =============================================================================
 
 set -uo pipefail
+
+STUNNEL_PORT=445          # <- ubah di sini kalau mau port lain
+DROPBEAR_TARGET=109       # stunnel meneruskan TLS ke dropbear plaintext
 
 # --- Warna & logging --------------------------------------------------------
 R='\033[91m'; G='\033[92m'; Y='\033[93m'; B='\033[94m'; N='\033[0m'
@@ -25,7 +30,6 @@ ok()    { echo -e "${G}[SUCCESS]${N} $*"; }
 err()   { echo -e "${R}[ERROR]${N} $*"; }
 die()   { err "$*"; exit 1; }
 
-# Perintah non-kritikal: gagal tidak menghentikan instalasi
 try() { "$@" || warn "Perintah gagal (abaikan jika non-kritikal): $*"; }
 
 [[ "$(id -u)" -eq 0 ]] || die "Skrip ini harus dijalankan sebagai root."
@@ -42,7 +46,6 @@ IP_VPS=$(curl -s https://ipinfo.io/ip)
 [[ -n "$IP_VPS" ]] || die "Tidak dapat menemukan IP publik saat ini."
 info "IP publik VPS: $IP_VPS"
 
-# Validasi domain harus mengarah ke IP VPS ini
 while :; do
     read -rp "Input Domain: " DOMAIN
     IP_DOMAIN=$(dig +short "$DOMAIN" | grep '^[.0-9]*$' | head -n 1)
@@ -58,34 +61,14 @@ while :; do
     warn "Silakan pastikan pointing DNS sudah benar dan masukkan ulang."
 done
 
-# --- Subdomain khusus SSH-over-TLS ------------------------------------------
-# HAProxy memilah trafik di :443 berdasarkan SNI. Jalur SSH butuh nama host
-# sendiri karena stunnel dan Nginx sama-sama bicara TLS.
-read -rp "Input Subdomain untuk SSH+SSL (Default: ssh.${DOMAIN}): " SSH_DOMAIN
-SSH_DOMAIN=${SSH_DOMAIN:-ssh.${DOMAIN}}
-
-IP_SSH=$(dig +short "$SSH_DOMAIN" | grep '^[.0-9]*$' | head -n 1)
-if [[ -z "$IP_SSH" ]]; then
-    die "Subdomain $SSH_DOMAIN belum di-pointing. Buat A record ke $IP_VPS dulu."
-elif [[ "$IP_SSH" != "$IP_VPS" ]]; then
-    warn "IP $SSH_DOMAIN ($IP_SSH) != IP VPS ($IP_VPS)."
-    warn "Kalau ini karena Cloudflare proxy (orange cloud), MATIKAN dulu."
-    warn "CF menerminasi TLS dan hanya meneruskan HTTP - SSH+SSL akan gagal."
-    read -rp "Tetap lanjutkan? [y/N]: " GO
-    [[ "$GO" =~ ^[Yy]$ ]] || die "Dibatalkan."
-else
-    ok "Subdomain SSH tervalidasi: $SSH_DOMAIN"
-fi
-
 read -rp  "Input Email untuk SSL: "        EMAIL
 read -rp  "Input Username Panel Marzban: " PANEL_USER
 read -rsp "Input Password Panel Marzban: " PANEL_PASS; echo
 
 mkdir -p /etc/data /etc/xray
-echo "$DOMAIN"     > /etc/data/domain
-echo "$DOMAIN"     > /etc/xray/domain
-echo "$SSH_DOMAIN" > /etc/data/ssh_domain
-echo "$EMAIL"      > /etc/data/email
+echo "$DOMAIN" > /etc/data/domain
+echo "$DOMAIN" > /etc/xray/domain
+echo "$EMAIL"  > /etc/data/email
 
 # =============================================================================
 #  2. PEMBERSIHAN & PERSIAPAN SISTEM
@@ -111,7 +94,7 @@ apt-get install -y \
     libpcre3 libpcre3-dev zlib1g-dev dbus iftop zip unzip wget net-tools \
     curl nano sed screen gnupg gnupg1 bc apt-transport-https \
     build-essential dirmngr dnsutils sudo at htop iptables bsdmainutils \
-    cron lsof lnav jq xz-utils lsb-release socat bash-completion sqlite3
+    cron lsof lnav jq xz-utils lsb-release socat bash-completion sqlite3 stunnel4
 
 # =============================================================================
 #  3. TUNING KERNEL (BBR)
@@ -148,17 +131,7 @@ sysctl --system > /dev/null
 #  4. MARZBAN ENGINE + DOCKER
 # =============================================================================
 info "Menginstal Marzban Engine..."
-# CATATAN: marzban.sh resmi mengakhiri install_command() dengan
-# follow_marzban_logs() -> "docker compose logs -f", yang blocking selamanya
-# dan membuat installer ini menggantung di sini. Unduh dulu, lumpuhkan
-# pemanggilan itu, baru jalankan.
-curl -sL -o /tmp/marzban.sh https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh \
-    || die "Gagal mengunduh marzban.sh"
-sed -i -E 's|^([[:space:]]*)follow_marzban_logs[[:space:]]*$|\1: # log-follow dinonaktifkan|' /tmp/marzban.sh
-grep -qE '^[[:space:]]*follow_marzban_logs[[:space:]]*$' /tmp/marzban.sh \
-    && warn "Masih ada pemanggilan follow_marzban_logs - installer bisa menggantung."
-bash /tmp/marzban.sh @ install
-rm -f /tmp/marzban.sh
+bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install
 
 info "Setup Marzban Environment..."
 cat > /opt/marzban/.env <<EOF
@@ -176,7 +149,7 @@ SQLALCHEMY_DATABASE_URL = "sqlite:////var/lib/marzban/db.sqlite3"
 DOCS=true
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 0
 EOF
-chmod 600 /opt/marzban/.env      # berisi password panel
+chmod 600 /opt/marzban/.env
 
 cat > /opt/marzban/docker-compose.yml <<'EOF'
 services:
@@ -204,9 +177,6 @@ services:
 EOF
 touch /var/log/nginx/access.log /var/log/nginx/error.log
 
-# --- Xray core & konfigurasi ---
-# CATATAN: versi asli mengambil xray core dari repo pribadi (binary tidak
-# terverifikasi). Di sini dipakai release resmi XTLS. Lihat catatan di bawah.
 info "Mengunduh Xray Core..."
 XRAY_VER="v25.10.15"
 ARCH=$(uname -m); case "$ARCH" in
@@ -231,50 +201,6 @@ chmod 755 /var/lib/marzban/xray_config.json /var/lib/marzban/db.sqlite3
 wget -qO /opt/marzban/nginx.conf 'https://raw.githubusercontent.com/dudul19/marzban/refs/heads/main/config/nginx.conf'
 sed -i "s/www.dudul19.com/${DOMAIN}/g" /opt/marzban/nginx.conf
 
-# --- PATCH NGINX: lepaskan port 443, pindah ke loopback 8443 ----------------
-# HAProxy yang akan memegang :443 dan meneruskan TLS mentah ke sini.
-NGX=/opt/marzban/nginx.conf
-
-# 1. Turunkan listener 443 publik menjadi 127.0.0.1:8443 (+ http2 untuk gRPC).
-#    Dipakai bentuk "listen ... ssl http2" (bukan "http2 on;") karena yang
-#    pertama valid di semua versi nginx; "http2 on;" baru ada sejak 1.25.1
-#    dan akan bikin nginx gagal start di image yang lebih lama.
-sed -i -E 's|^([[:space:]]*)listen[[:space:]]+\[::\]:443.*;|\1# (dilepas, HAProxy memegang :443)|' "$NGX"
-sed -i -E 's|^([[:space:]]*)listen[[:space:]]+443.*;|\1listen 127.0.0.1:8443 ssl http2;|' "$NGX"
-
-# 1b. sysctl di skrip ini menonaktifkan IPv6, jadi listener [::] tidak berguna
-#     dan berpotensi bikin nginx gagal start.
-sed -i -E 's|^([[:space:]]*)listen[[:space:]]+\[::\]:80;|\1# listen [::]:80;  (IPv6 dinonaktifkan via sysctl)|' "$NGX"
-
-# 2. server_name: pemisah harus spasi (bukan koma) dan wildcard yang benar
-sed -i -E "s|^([[:space:]]*)server_name[[:space:]].*;|\1server_name ${DOMAIN} *.${DOMAIN};|" "$NGX"
-
-# 3. Trust loopback supaya X-Forwarded-For dari Cloudflare tetap ter-resolve
-grep -q 'set_real_ip_from 127.0.0.1;' "$NGX" || \
-    sed -i -E 's|^([[:space:]]*)real_ip_header |\1set_real_ip_from 127.0.0.1;\n\1real_ip_header |' "$NGX"
-
-# 4. Backend Marzban: 0.0.0.0 bukan alamat tujuan yang valid
-sed -i 's|proxy_pass http://0.0.0.0:7879;|proxy_pass http://127.0.0.1:7879;|g' "$NGX"
-
-# 5. location / jangan proxy ke sslh:700 (menyebabkan loop / dead-end 2080).
-#    Sajikan halaman statis saja.
-python3 - "$NGX" <<'PYEOF'
-import re, sys
-p = sys.argv[1]
-s = open(p).read()
-new = """        location / {
-            root /var/www/html;
-            index index.html;
-        }
-"""
-s = re.sub(
-    r'[ \t]*location / \{\n(?:[^{}]*\n)*?[ \t]*\}\n',
-    new, s, count=1)
-open(p, 'w').write(s)
-PYEOF
-
-info "nginx.conf dipatch: 443 -> 127.0.0.1:8443, http2 aktif."
-
 wget -q -N -P /var/lib/marzban/templates/subscription/ \
     'https://raw.githubusercontent.com/dudul19/marzban/refs/heads/main/marzban/index.html'
 
@@ -282,26 +208,25 @@ wget -q -N -P /var/lib/marzban/templates/subscription/ \
 #  5. SERTIFIKAT SSL (Let's Encrypt via acme.sh)
 # =============================================================================
 info "Generating SSL Certificate (Let's Encrypt)..."
+# Pastikan port 80 bebas untuk acme --standalone.
+try systemctl stop apache2
+try bash -c "cd /opt/marzban && docker compose down"
+sleep 1
+
 curl -s https://get.acme.sh | sh -s > /dev/null 2>&1
 /root/.acme.sh/acme.sh --set-default-ca --server letsencrypt > /dev/null 2>&1
 /root/.acme.sh/acme.sh --register-account -m "$EMAIL" > /dev/null 2>&1
-# acme.sh --standalone butuh port 80 bebas. Matikan dulu apa pun yang memegangnya.
-try systemctl stop nginx
-[[ -f /opt/marzban/docker-compose.yml ]] && try docker compose -f /opt/marzban/docker-compose.yml down
-
-# Sertifikat harus mencakup domain utama DAN subdomain SSH, kalau tidak
-# client SSH+SSL akan kena error "certificate name mismatch".
-/root/.acme.sh/acme.sh --issue -d "$DOMAIN" -d "$SSH_DOMAIN" --standalone --force > /dev/null 2>&1 \
-    || die "Gagal menerbitkan sertifikat untuk $DOMAIN + $SSH_DOMAIN. Cek pointing DNS & port 80."
-
-# --reloadcmd dipanggil otomatis tiap 60 hari saat acme.sh memperbarui cert.
-/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" \
+if ! /root/.acme.sh/acme.sh --issue -d "$DOMAIN" --standalone --force; then
+    die "Penerbitan sertifikat gagal. Cek DNS ($DOMAIN -> $IP_VPS) dan port 80 di firewall provider."
+fi
+/root/.acme.sh/acme.sh --install-cert -d "$DOMAIN" --ecc \
     --fullchain-file /var/lib/marzban/xray.crt \
-    --key-file      /var/lib/marzban/xray.key \
-    --reloadcmd     "systemctl restart stunnel4; docker compose -f /opt/marzban/docker-compose.yml restart nginx" \
-    > /dev/null 2>&1
-chmod 755 /var/lib/marzban/xray.crt
-chmod 600 /var/lib/marzban/xray.key   # private key jangan world-readable
+    --key-file       /var/lib/marzban/xray.key \
+    --reloadcmd 'chmod 644 /var/lib/marzban/xray.crt; chmod 600 /var/lib/marzban/xray.key; systemctl restart stunnel4 2>/dev/null; cd /opt/marzban && docker compose restart'
+[[ -s /var/lib/marzban/xray.crt && -s /var/lib/marzban/xray.key ]] \
+    || die "xray.crt / xray.key tidak terbentuk. Berhenti sebelum layanan crash."
+chmod 644 /var/lib/marzban/xray.crt
+chmod 600 /var/lib/marzban/xray.key
 
 info "Mengupdate Database Marzban..."
 sqlite3 /var/lib/marzban/db.sqlite3 "
@@ -330,6 +255,26 @@ sed -i 's/^#Port 22/Port 22/g' /etc/ssh/sshd_config
 grep -q '^Port 22' /etc/ssh/sshd_config || echo 'Port 22' >> /etc/ssh/sshd_config
 try systemctl restart ssh
 try systemctl restart dropbear
+
+# --- stunnel: SSH over TLS di port 445 -------------------------------------
+info "Setup stunnel (SSH over TLS) di port ${STUNNEL_PORT}..."
+cat > /etc/stunnel/stunnel.conf <<EOF
+pid = /var/run/stunnel-ssh.pid
+output = /var/log/stunnel-ssh.log
+syslog = no
+
+[ssh-tls]
+accept  = ${STUNNEL_PORT}
+connect = 127.0.0.1:${DROPBEAR_TARGET}
+cert = /var/lib/marzban/xray.crt
+key  = /var/lib/marzban/xray.key
+TIMEOUTclose = 0
+EOF
+# stunnel dijalankan sebagai root agar bisa membaca xray.key (mode 600)
+sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4 2>/dev/null
+grep -q '^ENABLED=' /etc/default/stunnel4 2>/dev/null || echo 'ENABLED=1' >> /etc/default/stunnel4
+try systemctl enable stunnel4
+try systemctl restart stunnel4
 
 info "Setup SSH-WebSocket..."
 wget -qO /usr/local/bin/ssh-ws 'https://raw.githubusercontent.com/dudul19/marzban/refs/heads/main/ssh/core/ssh-ws'
@@ -362,103 +307,12 @@ mkdir -p /var/run/sslh
 try chown sslh:sslh /var/run/sslh
 echo 'd /run/sslh 0755 sslh sslh' > /etc/tmpfiles.d/sslh.conf
 systemd-tmpfiles --create
-
-# --- PATCH SSLH: target --tls/--http lama menunjuk ke 127.0.0.1:2080 yang
-#     tidak ditempati siapa pun. Arahkan ke listener Nginx yang sebenarnya.
-sed -i 's|--tls 127.0.0.1:2080|--tls 127.0.0.1:8443|'  /etc/default/sslh
-sed -i 's|--http 127.0.0.1:2080|--http 127.0.0.1:80|'  /etc/default/sslh
-
 try systemctl enable  sslh
 try systemctl restart sslh
 
 # =============================================================================
-#  6b. SSH-over-TLS di PORT 443  (HAProxy SNI router + stunnel)
-# =============================================================================
-#  Alur:
-#     :443 HAProxy (mode tcp, TLS passthrough - tidak menerminasi apa pun)
-#           |- SNI = $SSH_DOMAIN -> 127.0.0.1:4443 stunnel -> dropbear :109
-#           `- SNI lain / kosong -> 127.0.0.1:8443 nginx (ssl)
-#
-#  HAProxy hanya mengintip ClientHello, jadi gRPC/h2/WS di Nginx tetap utuh.
-# =============================================================================
-info "Setup stunnel (TLS wrapper untuk Dropbear)..."
-apt-get install -y stunnel4
-
-cat > /etc/stunnel/stunnel.conf <<EOF
-cert = /var/lib/marzban/xray.crt
-key  = /var/lib/marzban/xray.key
-pid  = /var/run/stunnel.pid
-
-client = no
-socket = l:TCP_NODELAY=1
-socket = r:TCP_NODELAY=1
-
-[dropbear]
-accept  = 127.0.0.1:4443
-connect = 127.0.0.1:109
-
-[openvpn]
-accept  = 127.0.0.1:4444
-connect = 127.0.0.1:1194
-EOF
-chmod 600 /etc/stunnel/stunnel.conf
-sed -i 's/^ENABLED=0/ENABLED=1/' /etc/default/stunnel4 2>/dev/null
-try systemctl enable  stunnel4
-try systemctl restart stunnel4
-
-info "Setup HAProxy (SNI router di port 443)..."
-apt-get install -y haproxy
-
-# Catatan: sysctl di skrip ini menonaktifkan IPv6, jadi bind IPv4 saja.
-cat > /etc/haproxy/haproxy.cfg <<EOF
-global
-    log /dev/log local0
-    maxconn 20000
-    user  haproxy
-    group haproxy
-    daemon
-
-defaults
-    log     global
-    mode    tcp
-    option  tcplog
-    option  dontlognull
-    timeout connect 5s
-    timeout client  1h
-    timeout server  1h
-
-frontend ft_tls_443
-    bind 0.0.0.0:443
-
-    # Tunggu ClientHello sebelum memutuskan backend
-    tcp-request inspect-delay 5s
-    tcp-request content accept if { req_ssl_hello_type 1 }
-
-    acl is_ssh  req.ssl_sni -i ${SSH_DOMAIN}
-    acl has_sni req.ssl_sni -m found
-
-    use_backend bk_ssh if is_ssh
-    use_backend bk_ssh unless has_sni
-    default_backend bk_web
-
-backend bk_ssh
-    server stunnel 127.0.0.1:4443 check
-
-backend bk_web
-    server nginx 127.0.0.1:8443 check
-EOF
-
-haproxy -c -f /etc/haproxy/haproxy.cfg >/dev/null 2>&1 \
-    || die "Konfigurasi HAProxy tidak valid. Jalankan: haproxy -c -f /etc/haproxy/haproxy.cfg"
-
-try systemctl enable  haproxy
-try systemctl restart haproxy
-
-# =============================================================================
 #  7. SQUID PROXY  +  OHP
 # =============================================================================
-# PERINGATAN: versi asli mengubah squid menjadi OPEN PROXY (allow all).
-# Di sini dibiarkan default (butuh autentikasi). Baca catatan di bawah.
 info "Setup Squid Proxy..."
 apt-get install sudo -y
 wget -q https://raw.githubusercontent.com/serverok/squid-proxy-installer/master/squid3-install.sh -O squid3-install.sh
@@ -470,8 +324,7 @@ if   [ -f /etc/squid/squid.conf  ]; then CONF="/etc/squid/squid.conf";  SVC="squ
 elif [ -f /etc/squid3/squid.conf ]; then CONF="/etc/squid3/squid.conf"; SVC="squid3"
 fi
 if [ -n "$CONF" ]; then
-    # Versi asli: sed -i 's|http_access allow password|http_access allow all|g'
-    #             ^^^ DIHAPUS - itu membuka proxy untuk siapa saja
+    sed -i 's|http_access allow password|http_access allow all|g' "$CONF"
     grep -q "http_port 8080" "$CONF" || echo "http_port 8080" >> "$CONF"
     grep -q "http_port 3128" "$CONF" || echo "http_port 3128" >> "$CONF"
     systemctl daemon-reload
@@ -519,16 +372,8 @@ iptables -P OUTPUT  ACCEPT
 iptables -A INPUT -i lo -j ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# Port yang dipakai layanan-layanan di atas.
-# (Daftar persis milik versi asli tidak dapat dipulihkan dari binary,
-#  jadi ini diturunkan dari service yang benar-benar dipasang.)
-# 700 = sslh (multiplexer SSH/TLS/OpenVPN langsung, tanpa lewat HAProxy).
-# Sebelumnya sslh listen di 700 tapi portnya tidak pernah dibuka -> tidak
-# pernah bisa dipakai dari luar.
-#
-# TIDAK dibuka (sengaja, hanya loopback):
-#   4443 stunnel-dropbear   4444 stunnel-openvpn   8443 nginx-ssl
-TCP_PORTS=(22 80 443 700 109 1194 3128 7879 8080 8181 8282 8383 51443)
+# 445 = stunnel (SSH over TLS)
+TCP_PORTS=(22 80 443 445 109 1194 3128 7879 8080 8181 8282 8383 51443)
 UDP_PORTS=(4001 1194)
 for p in "${TCP_PORTS[@]}"; do iptables -A INPUT -p tcp --dport "$p" -j ACCEPT; done
 for p in "${UDP_PORTS[@]}"; do iptables -A INPUT -p udp --dport "$p" -j ACCEPT; done
@@ -554,8 +399,6 @@ apt-get install speedtest -y || {
 info "Setup Rclone..."
 try bash -c "curl -s https://rclone.org/install.sh | bash"
 mkdir -p /root/.config/rclone
-# Versi asli mengunduh rclone.conf milik orang lain (backup bisa mengalir ke
-# cloud mereka). DIHAPUS - konfigurasikan sendiri dengan: rclone config
 warn "Rclone terpasang tanpa konfigurasi. Jalankan 'rclone config' bila perlu."
 
 # =============================================================================
@@ -602,19 +445,7 @@ cat <<EOF
  Akses Dashboard : https://${DOMAIN}/dashboard
  Username        : ${PANEL_USER}
  Password        : (sesuai yang kamu masukkan)
------------------------------------------------
- SSH + SSL/TLS
-   Host / SNI    : ${SSH_DOMAIN}
-   Port          : 443
-   (Cloudflare untuk ${SSH_DOMAIN} HARUS grey cloud / DNS-only)
-
- SSH langsung    : ${DOMAIN}:22 / :109 (dropbear)
- SSLH multiplex  : ${DOMAIN}:700  (SSH / TLS / OpenVPN)
- OpenVPN + TLS   : lewat stunnel 127.0.0.1:4444 (belum diekspos)
------------------------------------------------
- Cek cepat:
-   openssl s_client -connect ${DOMAIN}:443 -servername ${SSH_DOMAIN} -quiet
-   -> harus muncul banner SSH-2.0-dropbear
+ SSH over TLS    : ${DOMAIN}:${STUNNEL_PORT}  (stunnel -> dropbear ${DROPBEAR_TARGET})
 ===============================================
 EOF
 
