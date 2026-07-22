@@ -235,9 +235,16 @@ sed -i "s/www.dudul19.com/${DOMAIN}/g" /opt/marzban/nginx.conf
 # HAProxy yang akan memegang :443 dan meneruskan TLS mentah ke sini.
 NGX=/opt/marzban/nginx.conf
 
-# 1. Turunkan listener 443 publik menjadi 127.0.0.1:8443 (+ http2 untuk gRPC)
+# 1. Turunkan listener 443 publik menjadi 127.0.0.1:8443 (+ http2 untuk gRPC).
+#    Dipakai bentuk "listen ... ssl http2" (bukan "http2 on;") karena yang
+#    pertama valid di semua versi nginx; "http2 on;" baru ada sejak 1.25.1
+#    dan akan bikin nginx gagal start di image yang lebih lama.
 sed -i -E 's|^([[:space:]]*)listen[[:space:]]+\[::\]:443.*;|\1# (dilepas, HAProxy memegang :443)|' "$NGX"
-sed -i -E 's|^([[:space:]]*)listen[[:space:]]+443.*;|\1listen 127.0.0.1:8443 ssl;\n\1http2 on;|' "$NGX"
+sed -i -E 's|^([[:space:]]*)listen[[:space:]]+443.*;|\1listen 127.0.0.1:8443 ssl http2;|' "$NGX"
+
+# 1b. sysctl di skrip ini menonaktifkan IPv6, jadi listener [::] tidak berguna
+#     dan berpotensi bikin nginx gagal start.
+sed -i -E 's|^([[:space:]]*)listen[[:space:]]+\[::\]:80;|\1# listen [::]:80;  (IPv6 dinonaktifkan via sysctl)|' "$NGX"
 
 # 2. server_name: pemisah harus spasi (bukan koma) dan wildcard yang benar
 sed -i -E "s|^([[:space:]]*)server_name[[:space:]].*;|\1server_name ${DOMAIN} *.${DOMAIN};|" "$NGX"
@@ -427,11 +434,11 @@ frontend ft_tls_443
     tcp-request inspect-delay 5s
     tcp-request content accept if { req_ssl_hello_type 1 }
 
-    acl is_ssh req.ssl_sni -i ${SSH_DOMAIN}
-    acl no_sni !{ req.ssl_sni -m found }
+    acl is_ssh  req.ssl_sni -i ${SSH_DOMAIN}
+    acl has_sni req.ssl_sni -m found
 
     use_backend bk_ssh if is_ssh
-    use_backend bk_ssh if no_sni
+    use_backend bk_ssh unless has_sni
     default_backend bk_web
 
 backend bk_ssh
